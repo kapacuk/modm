@@ -1,0 +1,10 @@
+<library>
+  <extends>modm:weact-g031</extends>
+  <options>
+    <option name="modm:build:build.path">./build</option>
+  </options>
+  <modules>
+    <module>modm:build:make</module>
+    <module>modm:freertos</module>
+  </modules>
+</library>
