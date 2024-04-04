@@ -1,0 +1,15 @@
+<library>
+  <repositories>
+    <repository>
+      <path>../../../../repo.lb</path>
+    </repository>
+  </repositories>
+
+  <options>
+    <option name="modm:target">stm32g031f6p6</option>
+    <option name="modm:platform:uart:2:buffer.tx">2Ki</option>
+  </options>
+  <modules>
+    <module>modm:board:weact-g031</module>
+  </modules>
+</library>
