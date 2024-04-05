@@ -340,7 +340,7 @@ MODM_ISR({{ name | upper }})
 %% if has_freertos_queue
             xQueueReceiveFromISR( txQueue, &data, &xHigherPriorityTaskWoken );
 %% else
-			data = txBuffer.get());
+			data = txBuffer.get();
 			txBuffer.pop();
 %% endif
             {{ hal }}::write(data);
