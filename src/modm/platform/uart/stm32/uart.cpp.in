@@ -25,15 +25,29 @@
 
 %% if buffered
 #include <modm/architecture/interface/atomic_lock.hpp>
+%% if not has_freertos_queue
 #include <modm/architecture/driver/atomic/queue.hpp>
+%% endif
 
 namespace
 {
 %% if options["buffer.rx"]
+%% if has_freertos_queue
+    static StaticQueue_t rxQueueStructure;
+    static uint8_t rxStorage[ {{ options["buffer.rx"] }} ];
+    static QueueHandle_t rxQueue = xQueueCreateStatic(sizeof(rxStorage), 1, rxStorage, &rxQueueStructure);
+%% else
 	static modm::atomic::Queue<uint8_t, {{ options["buffer.rx"] }}> rxBuffer;
 %% endif
+%% endif
 %% if options["buffer.tx"]
+%% if has_freertos_queue
+    static StaticQueue_t txQueueStructure;
+    static uint8_t txStorage[ {{ options["buffer.rx"] }} ];
+    static QueueHandle_t txQueue = xQueueCreateStatic(sizeof(txStorage), 1, txStorage, &txQueueStructure);
+%% else
 	static modm::atomic::Queue<uint8_t, {{ options["buffer.tx"] }}> txBuffer;
+%% endif
 %% endif
 }
 %% endif
@@ -67,13 +81,21 @@ void
 }
 
 bool
-{{ name }}::write(uint8_t data)
+{{ name }}::write(uint8_t data
+%% if has_freertos_queue
+                 , TickType_t timeout
+%% endif
+    )
 {
 %% if options["buffer.tx"]
-	if(txBuffer.isEmpty() && {{ hal }}::isTransmitRegisterEmpty()) {
+	if(transmitBufferSize() == 0 && {{ hal }}::isTransmitRegisterEmpty()) {
 		{{ hal }}::write(data);
 	} else {
+%% if has_freertos_queue
+        if (xQueueSend( txQueue, &data, timeout ) != pdTRUE)
+%% else
 		if (!txBuffer.push(data))
+%% endif
 			return false;
 		// Disable interrupts while enabling the transmit interrupt
 		atomic::Lock lock;
@@ -92,12 +114,20 @@ bool
 }
 
 std::size_t
-{{ name }}::write(const uint8_t *data, std::size_t length)
+{{ name }}::write(const uint8_t *data, std::size_t length
+%% if has_freertos_queue
+                 , TickType_t timeout
+%% endif
+    )
 {
 	uint32_t i = 0;
 	for (; i < length; ++i)
 	{
-		if (!write(*data++)) {
+		if (!write(*data++
+%% if has_freertos_queue
+                   , timeout
+%% endif
+                )) {
 			return i;
 		}
 	}
@@ -108,7 +138,7 @@ bool
 {{ name }}::isWriteFinished()
 {
 %% if options["buffer.tx"]
-	return txBuffer.isEmpty() && {{ hal }}::isTransmitRegisterEmpty();
+	return transmitBufferSize() == 0 && {{ hal }}::isTransmitRegisterEmpty();
 %% else
 	return {{ hal }}::isTransmitRegisterEmpty();
 %% endif
@@ -118,7 +148,11 @@ std::size_t
 {{ name }}::transmitBufferSize()
 {
 %% if options["buffer.tx"]
+%% if has_freertos_queue
+    return uxQueueMessagesWaiting( txQueue );
+%% else
 	return txBuffer.getSize();
+%% endif
 %% else
 	return {{ hal }}::isTransmitRegisterEmpty() ? 0 : 1;
 %% endif
@@ -128,13 +162,15 @@ std::size_t
 {{ name }}::discardTransmitBuffer()
 {
 %% if options["buffer.tx"]
-	std::size_t count = 0;
 	// disable interrupt since buffer will be cleared
 	{{ hal }}::disableInterrupt({{ hal }}::Interrupt::TxEmpty);
-	while(!txBuffer.isEmpty()) {
-		++count;
+	std::size_t count = transmitBufferSize();
+%% if has_freertos_queue
+    xQueueReset( txQueue );
+%% else
+	while(!txBuffer.isEmpty())
 		txBuffer.pop();
-	}
+%% endif
 	return count;
 %% else
 	return 0;
@@ -142,9 +178,16 @@ std::size_t
 }
 
 bool
-{{ name }}::read(uint8_t &data)
+{{ name }}::read(uint8_t &data
+%% if has_freertos_queue
+                 , TickType_t timeout
+%% endif
+    )
 {
 %% if options["buffer.rx"]
+%% if has_freertos_queue
+    return ( xQueueReceive(rxQueue, &data, timeout) == pdTRUE );
+%% else
 	if (rxBuffer.isEmpty()) {
 		return false;
 	} else {
@@ -152,6 +195,7 @@ bool
 		rxBuffer.pop();
 		return true;
 	}
+%% endif
 %% else
 	if({{ hal }}::isReceiveRegisterNotEmpty()) {
 		{{ hal }}::read(data);
@@ -162,12 +206,21 @@ bool
 %% endif
 }
 
+    
 std::size_t
-{{ name }}::read(uint8_t *data, std::size_t length)
+{{ name }}::read(uint8_t *data, std::size_t length
+%% if has_freertos_queue
+                , TickType_t timeout
+%% endif
+    )
 {
 %% if options["buffer.rx"]
 	uint32_t i = 0;
 	for (; i < length; ++i)
+%% if has_freertos_queue
+        if( xQueueReceive(rxQueue, data++, timeout) != pdTRUE )
+            return i;
+%% else
 	{
 		if (rxBuffer.isEmpty()) {
 			return i;
@@ -176,6 +229,7 @@ std::size_t
 			rxBuffer.pop();
 		}
 	}
+%% endif
 	return i;
 %% else
 	(void)length; // avoid compiler warning
@@ -191,7 +245,11 @@ std::size_t
 {{ name }}::receiveBufferSize()
 {
 %% if options["buffer.rx"]
+%% if has_freertos_queue
+    return uxQueueMessagesWaiting( rxQueue );
+%% else
 	return rxBuffer.getSize();
+%% endif
 %% else
 	return {{ hal }}::isReceiveRegisterNotEmpty() ? 1 : 0;
 %% endif
@@ -202,10 +260,18 @@ std::size_t
 {
 %% if options["buffer.rx"]
 	std::size_t count = 0;
+%% if has_freertos_queue
+    uint8_t data;
+    while( uxQueueMessagesWaiting( rxQueue ) > 0 ) {
+        ++count;
+        xQueueReceive( rxQueue, &data, 0 );
+    }
+%% else
 	while(!rxBuffer.isEmpty()) {
 		++count;
 		rxBuffer.pop();
 	}
+%% endif
 	return count;
 %% else
 	return 0;
@@ -243,27 +309,47 @@ modm::platform::{{ name }}::irq()
 MODM_ISR({{ name | upper }})
 %% endif
 {
+%% if has_freertos_queue
+    BaseType_t xHigherPriorityTaskWoken;
+%% endif
 	using namespace modm::platform;
 %% if options["buffer.rx"]
 	if ({{ hal }}::isReceiveRegisterNotEmpty()) {
 		// TODO: save the errors
 		uint8_t data;
 		{{ hal }}::read(data);
+%% if has_freertos_queue
+        xQueueSendFromISR( rxQueue, &data, &xHigherPriorityTaskWoken );
+%% else
 		rxBuffer.push(data);
+%% endif
 	}
 %% endif
 %% if options["buffer.tx"]
 	if ({{ hal }}::isTransmitRegisterEmpty()) {
+%% if has_freertos_queue
+        if( xQueueIsQueueEmptyFromISR( txQueue ) == pdTRUE ) {
+%% else
 		if (txBuffer.isEmpty()) {
+%% endif
 			// transmission finished, disable TxEmpty interrupt
 			{{ hal }}::disableInterrupt({{ hal }}::Interrupt::TxEmpty);
 		}
 		else {
-			{{ hal }}::write(txBuffer.get());
+            uint8_t data;
+%% if has_freertos_queue
+            xQueueReceiveFromISR( txQueue, &data, &xHigherPriorityTaskWoken );
+%% else
+			data = txBuffer.get());
 			txBuffer.pop();
+%% endif
+            {{ hal }}::write(data);
 		}
 	}
 %% endif
 	{{ hal }}::acknowledgeInterruptFlags({{ hal }}::InterruptFlag::OverrunError);
+%% if has_freertos_queue
+    portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+%% endif
 }
 %% endif

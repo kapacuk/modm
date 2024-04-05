@@ -32,6 +32,11 @@
 #include "uart_hal_{{ id }}.hpp"
 %%endif
 
+%% if has_freertos_queue
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+%% endif
+
 namespace modm::platform
 {
 
@@ -96,10 +101,18 @@ public:
 	flushWriteBuffer();
 
 	static bool
-	write(uint8_t data);
+	write(uint8_t data
+%% if has_freertos_queue
+                 , TickType_t timeout=0
+%% endif
+        );
 
 	static std::size_t
-	write(const uint8_t *data, std::size_t length);
+	write(const uint8_t *data, std::size_t length
+%% if has_freertos_queue
+                 , TickType_t timeout=0
+%% endif
+        );
 
 	static bool
 	isWriteFinished();
@@ -111,10 +124,18 @@ public:
 	discardTransmitBuffer();
 
 	static bool
-	read(uint8_t &data);
+	read(uint8_t &data
+%% if has_freertos_queue
+                 , TickType_t timeout=0
+%% endif
+        );
 
 	static std::size_t
-	read(uint8_t *buffer, std::size_t length);
+	read(uint8_t *buffer, std::size_t length
+%% if has_freertos_queue
+                 , TickType_t timeout=0
+%% endif
+        );
 
 	static std::size_t
 	receiveBufferSize();
