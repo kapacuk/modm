@@ -206,7 +206,7 @@ bool
 %% endif
 }
 
-    
+
 std::size_t
 {{ name }}::read(uint8_t *data, std::size_t length
 %% if has_freertos_queue
