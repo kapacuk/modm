@@ -253,7 +253,7 @@ def common_compiler_flags(compiler, target):
     #     "-O3",
     # ]
     flags["ccflags.debug"] = [
-        "-Og",
+        "-O0",
         "-fno-split-wide-types",
         "-fno-tree-loop-optimize",
         "-fno-move-loop-invariants",

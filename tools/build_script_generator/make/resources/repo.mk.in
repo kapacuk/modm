@@ -6,7 +6,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-profile?=release
+profile?=debug
 
 %% macro generate_flags_for_profile(name, profile, append=False)
 {{name | upper}} {% if append %}+{% else %}:{% endif %}= \
@@ -82,7 +82,7 @@ $(BUILDPATH)/{{ file | objectify }}: $(OUTPATH)/{{ file }}
 # Static library build rule
 $(BUILDPATH)/{{repo}}/lib{{repo}}.a: $({{ repo|upper }}_OBJS)
 	@echo "Archiving······" $(subst $(BUILDPATH_PREFIX),,$@)
-	@$(AR) rc $@ $^
+	$(AR) rc $@ $^
 	@echo "Indexing·······" $(subst $(BUILDPATH_PREFIX),,$@)
 	@$(RANLIB) $@
 
